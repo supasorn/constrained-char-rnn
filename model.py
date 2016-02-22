@@ -24,9 +24,11 @@ class WindowCell():
     def input_size(self):
         return self._input_size
 
+    # inputs - tensor of size [batch_size x vocab_size]
     # con - tensor of size [con_size x vocab_size]
     def __call__(self, inputs, state, con):
         with tf.variable_scope(type(self).__name__):
+            # batch_size x 3(cluster_size)
             concat = linear(inputs, 3 * self._cluster_size, True)
             a, b, k = array_ops.split(1, 3, concat)
             ao = tf.exp(a)
