@@ -7,7 +7,7 @@ import os
 import cPickle
 
 from utils import TextLoader
-from model import Model
+from model import ConstrainedModel
 
 def main():
     parser = argparse.ArgumentParser()
@@ -35,11 +35,14 @@ def main():
                        help='learning rate')
     parser.add_argument('--decay_rate', type=float, default=0.97,
                        help='decay rate for rmsprop')
+    parser.add_argument('--reprocess', type=int, default=0,
+                       help='reprocess input')
     args = parser.parse_args()
     train(args)
 
+
 def train(args):
-    data_loader = TextLoader(args.data_dir, args.batch_size, args.seq_length)
+    data_loader = TextLoader(args.data_dir, args.batch_size, args.seq_length, args.reprocess)
     args.vocab_size = data_loader.vocab_size
 
     # one-hot representation
@@ -50,7 +53,7 @@ def train(args):
     with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'w') as f:
         cPickle.dump((data_loader.chars, data_loader.vocab), f)
 
-    model = Model(args)
+    model = ConstrainedModel(args)
 
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
@@ -61,8 +64,10 @@ def train(args):
             state = model.initial_state.eval()
             for b in xrange(data_loader.num_batches):
                 start = time.time()
-                x, y = data_loader.next_batch()
-                feed = {model.input_data: x, model.targets: y, model.initial_state: state}
+                x, y, con = data_loader.next_batch()
+                
+
+                feed = {model.input_data: x, model.targets: y, model.initial_state: state, model.con_data:con}
                 train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
                 end = time.time()
                 print "{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \

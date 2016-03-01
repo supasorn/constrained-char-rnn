@@ -7,7 +7,7 @@ import os
 import cPickle
 
 from utils import TextLoader
-from model import Model
+from model import ConstrainedModel
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,7 +25,7 @@ def sample(args):
         saved_args = cPickle.load(f)
     with open(os.path.join(args.save_dir, 'chars_vocab.pkl')) as f:
         chars, vocab = cPickle.load(f)
-    model = Model(saved_args, True)
+    model = ConstrainedModel(saved_args, True)
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
