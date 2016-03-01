@@ -79,6 +79,10 @@ class Network():
             tf.pack([batch_size, self.state_size]), dtype=dtype)
         zeros.set_shape([None, self.state_size])
         return zeros
+
+    def zero_constrain(self, batch_size):
+        zeros = tf.zeros([batch_size, self._con_size], dtype=tf.float32)
+        return zeros
     
     @property
     def state_size(self):
@@ -163,14 +167,14 @@ class ConstrainedModel():
             raise Exception("model type not supported: {}".format(args.model))
 
         #cell = cell_fn(args.rnn_size)
-        con_size = args.seq_length
+        con_size = 50 #args.seq_length
 
         #self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers)
         self.network = Network(cell_fn, args.vocab_size, 20, args.vocab_size, args.rnn_size, con_size)
 
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
-        self.con_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+        self.con_data = tf.placeholder(tf.int32, [args.batch_size, con_size])
 
         self.initial_state = self.network.zero_state(args.batch_size, tf.float32)
 
@@ -216,13 +220,23 @@ class ConstrainedModel():
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
-    def sample(self, sess, chars, vocab, num=200, prime='The '):
-        state = self.cell.zero_state(1, tf.float32).eval()
+    def sample(self, sess, chars, vocab, num=200, prime=''):
+        state = self.network.zero_state(1, tf.float32).eval()
+        #con = self.network.zero_constrain(1).eval()
+        con_text = prime + 'the american auto industry'
+        con_text = con_text.upper() + ' ' * (50 - len(con_text))
+        con = np.expand_dims(map(vocab.get, con_text), 0)
+        print con
+        print con_text
+
         for char in prime[:-1]:
             x = np.zeros((1, 1))
             x[0, 0] = vocab[char]
-            feed = {self.input_data: x, self.initial_state:state}
+            feed = {self.input_data: x, self.initial_state:state, self.con_data: con}
             [state] = sess.run([self.final_state], feed)
+            #print "max = "
+            #print np.argmax(state[0][:self.network._vocab_size])
+            print state[0][668:668+20]
 
         def weighted_pick(weights):
             t = np.cumsum(weights)
@@ -234,7 +248,7 @@ class ConstrainedModel():
         for n in xrange(num):
             x = np.zeros((1, 1))
             x[0, 0] = vocab[char]
-            feed = {self.input_data: x, self.initial_state:state}
+            feed = {self.input_data: x, self.initial_state:state, self.con_data: con}
             [probs, state] = sess.run([self.probs, self.final_state], feed)
             p = probs[0]
             # sample = int(np.random.choice(len(p), p=p))
