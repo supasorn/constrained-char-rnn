@@ -54,15 +54,15 @@ class WindowCell():
 
 
 class Network():
-    def __init__(self, cell_fn, input_size, cluster_size, vocab_size, hidden_unit, con_size):
-
+    def __init__(self, cell_fn, input_size, cluster_size, vocab_size, hidden_unit, con_size, num_layers):
+        self._num_layers = num_layers
         self._con_size = con_size
         self._vocab_size = vocab_size
         self.w = WindowCell(input_size, cluster_size, vocab_size, con_size) 
 
         self.hn = []
         self.hn.append(cell_fn(hidden_unit , 1.0, input_size + self.w.output_size))
-        for i in range(2):
+        for i in range(num_layers - 1):
             self.hn.append(cell_fn(hidden_unit , 1.0, input_size + self.hn[i].output_size + self.w.output_size))
 
         self._state_size = self._vocab_size + self.w.state_size + sum(h.state_size for h in self.hn)
@@ -130,7 +130,7 @@ class Network():
                     cur_state_pos += self.hn[i].state_size
 
 
-        return outh[-1], tf.concat(1, new_states) # TODO add skip connection?
+        return tf.concat(1, outh), tf.concat(1, new_states) # TODO add skip connection?
 
 def decoder(inputs, initial_state, network, con, loop_function=None, scope=None):
     with tf.variable_scope(scope or "rnn_decoder"):
@@ -170,7 +170,7 @@ class ConstrainedModel():
         con_size = 50 #args.seq_length
 
         #self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers)
-        self.network = Network(cell_fn, args.vocab_size, 20, args.vocab_size, args.rnn_size, con_size)
+        self.network = Network(cell_fn, args.vocab_size, 20, args.vocab_size, args.rnn_size, con_size, args.num_layers)
 
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
@@ -179,7 +179,7 @@ class ConstrainedModel():
         self.initial_state = self.network.zero_state(args.batch_size, tf.float32)
 
         with tf.variable_scope('rnnlm'):
-            softmax_w = tf.get_variable("softmax_w", [args.rnn_size, args.vocab_size])
+            softmax_w = tf.get_variable("softmax_w", [args.rnn_size * args.num_layers, args.vocab_size])
           
             softmax_b = tf.get_variable("softmax_b", [args.vocab_size])
             #embedding = tf.get_variable("embedding", [args.vocab_size, args.rnn_size])
@@ -201,7 +201,7 @@ class ConstrainedModel():
         outputs, states = decoder(inputs, self.initial_state, self.network, con, loop_function=loop if infer else None, scope='rnnlm')
 
         # turn a list of output into row matrix where each row is output
-        output = tf.reshape(tf.concat(1, outputs), [-1, args.rnn_size])
+        output = tf.reshape(tf.concat(1, outputs), [-1, args.rnn_size * args.num_layers])
 
         self.logits = tf.nn.xw_plus_b(output, softmax_w, softmax_b)
         self.probs = tf.nn.softmax(self.logits)
