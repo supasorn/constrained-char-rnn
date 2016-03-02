@@ -87,14 +87,12 @@ def train2(args):
                 x, y, con = data_loader.next_batch()
 
                 feed = {model.input_data: x, model.targets: y, model.initial_state: state, model.con_data:con}
-                #train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
-                time.sleep(0.01)
-                train_loss = 5
+                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                #time.sleep(0.01)
+                #train_loss = 5
                 end = time.time()
 
-
                 taskNum = (e * data_loader.num_batches + b)
-
                 etaCount += 1
                 if (etaCount) % 25 == 0:
                     duration = time.time() - etaStart
