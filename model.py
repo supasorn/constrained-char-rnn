@@ -122,7 +122,6 @@ class Network():
 
             for i in range(1, len(self.hn)):
                 with tf.variable_scope("hidden%d" % (i+1)):
-                    print cur_state_pos, self.hn[i].state_size, self._state_size
                     cur_state = tf.slice(state, [0, cur_state_pos], [-1, self.hn[i].state_size])
                     outh[i], new_state = self.hn[i](tf.concat(1, [inputs, outh[i-1], wt]), cur_state)
 

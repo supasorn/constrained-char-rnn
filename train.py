@@ -27,7 +27,7 @@ def main():
                        help='RNN sequence length')
     parser.add_argument('--num_epochs', type=int, default=50,
                        help='number of epochs')
-    parser.add_argument('--save_every', type=int, default=1000,
+    parser.add_argument('--save_every', type=int, default=5,
                        help='save frequency')
     parser.add_argument('--grad_clip', type=float, default=5.,
                        help='clip gradients at this value')
@@ -41,54 +41,23 @@ def main():
     #train(args)
     train2(args)
 
+def decayForEpoch(args, e):
+    return args.learning_rate * (args.decay_rate ** e)
+
 def train2(args):
     data_loader = TextLoader(args.data_dir, args.batch_size, args.seq_length, args.reprocess)
     args.vocab_size = data_loader.vocab_size
 
-    with open(os.path.join(args.save_dir, 'config.pkl'), 'w') as f:
-        cPickle.dump(args, f)
-    with open(os.path.join(args.save_dir, 'chars_vocab.pkl'), 'w') as f:
-        cPickle.dump((data_loader.chars, data_loader.vocab), f)
+    totalTask = args.num_epochs * data_loader.num_batches
 
-    model = ConstrainedModel(args)
+    lastCheckpoint = tf.train.latest_checkpoint(args.save_dir) 
+    if lastCheckpoint is None:
+        startEpoch = 0
+    else:
+        print "Last checkpoint :", lastCheckpoint
+        startEpoch = int(lastCheckpoint.split("-")[-1])
 
-    # reloading
-    # eta
-
-    for e in xrange(args.num_epochs):
-        print args.learning_rate * (args.decay_rate ** e)
-    exit(0)
-
-    with tf.Session() as sess:
-        tf.initialize_all_variables().run()
-        saver = tf.train.Saver(tf.all_variables())
-        for e in xrange(args.num_epochs):
-            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
-            data_loader.reset_batch_pointer()
-            state = model.initial_state.eval()
-            for b in xrange(data_loader.num_batches):
-                start = time.time()
-                x, y, con = data_loader.next_batch()
-                
-
-                feed = {model.input_data: x, model.targets: y, model.initial_state: state, model.con_data:con}
-                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
-                end = time.time()
-                print "{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                    .format(e * data_loader.num_batches + b,
-                            args.num_epochs * data_loader.num_batches,
-                            e, train_loss, end - start)
-                if (e * data_loader.num_batches + b) % args.save_every == 0:
-                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step = e * data_loader.num_batches + b)
-                    print "model saved to {}".format(checkpoint_path)
-
-def train(args):
-    data_loader = TextLoader(args.data_dir, args.batch_size, args.seq_length, args.reprocess)
-    args.vocab_size = data_loader.vocab_size
-
-    # one-hot representation
-    #args.rnn_size = args.vocab_size
+    print "startEpoch = ", startEpoch
 
     with open(os.path.join(args.save_dir, 'config.pkl'), 'w') as f:
         cPickle.dump(args, f)
@@ -97,29 +66,52 @@ def train(args):
 
     model = ConstrainedModel(args)
 
+    etaCount = 0
+    etaString = "-" 
+    etaStart = time.time()
+    etaTime = 0
+
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
         saver = tf.train.Saver(tf.all_variables())
-        for e in xrange(args.num_epochs):
-            sess.run(tf.assign(model.lr, args.learning_rate * (args.decay_rate ** e)))
+        if startEpoch > 0: # load latest checkpoint
+            print "Loading last checkpoint"
+            saver.restore(sess, lastCheckpoint)
+
+        for e in xrange(startEpoch, args.num_epochs):
+            sess.run(tf.assign(model.lr, decayForEpoch(args, e)))
             data_loader.reset_batch_pointer()
             state = model.initial_state.eval()
             for b in xrange(data_loader.num_batches):
                 start = time.time()
                 x, y, con = data_loader.next_batch()
-                
 
                 feed = {model.input_data: x, model.targets: y, model.initial_state: state, model.con_data:con}
-                train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                #train_loss, state, _ = sess.run([model.cost, model.final_state, model.train_op], feed)
+                time.sleep(0.01)
+                train_loss = 5
                 end = time.time()
-                print "{}/{} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                    .format(e * data_loader.num_batches + b,
-                            args.num_epochs * data_loader.num_batches,
-                            e, train_loss, end - start)
-                if (e * data_loader.num_batches + b) % args.save_every == 0:
-                    checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step = e * data_loader.num_batches + b)
-                    print "model saved to {}".format(checkpoint_path)
+
+
+                taskNum = (e * data_loader.num_batches + b)
+
+                etaCount += 1
+                if (etaCount) % 25 == 0:
+                    duration = time.time() - etaStart
+                    etaTime = (totalTask - (taskNum + 1)) / 25 * duration
+                    m, s = divmod(etaTime, 60)
+                    h, m = divmod(m, 60)
+                    etaString = "%d:%02d:%02d" % (h, m, s)
+                    etaStart = time.time()
+
+                print "{}/{} (epoch {}), loss = {:.3f}, time/batch = {:.3f}, ETA: {} ({})" \
+                    .format(taskNum, totalTask, e, train_loss, end - start, time.ctime(time.time()+etaTime), etaString)
+
+            if (e + 1) % args.save_every == 0 or e == args.num_epochs - 1:
+                checkpoint_path = os.path.join(args.save_dir, 'model.ckpt')
+                saver.save(sess, checkpoint_path, global_step = e + 1)
+                print "model saved to {}".format(checkpoint_path)
+
 
 if __name__ == '__main__':
     main()

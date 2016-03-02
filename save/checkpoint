@@ -4,3 +4,4 @@ all_model_checkpoint_paths: "model.ckpt-18000"
 all_model_checkpoint_paths: "model.ckpt-19000"
 all_model_checkpoint_paths: "model.ckpt-20000"
 all_model_checkpoint_paths: "model.ckpt-21000"
+
