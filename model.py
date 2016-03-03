@@ -6,9 +6,8 @@ import numpy as np
 
 
 class WindowCell():
-    def __init__(self, input_size, cluster_size, vocab_size, con_size):
+    def __init__(self, input_size, vocab_size, con_size):
         self._input_size = input_size
-        self._cluster_size = cluster_size
         self._vocab_size = vocab_size
         self._con_size = con_size
 
@@ -22,7 +21,7 @@ class WindowCell():
 
     @property
     def state_size(self):
-        return self._cluster_size 
+        return 1
 
     @property
     def output_size(self):
@@ -32,17 +31,15 @@ class WindowCell():
     # con - tensor of size [batch_size x seq_length x vocab_size]
     def __call__(self, inputs, state, con):
         with tf.variable_scope(type(self).__name__):
-            # batch_size x 3(cluster_size)
-            concat = rnn_cell.linear(inputs, 3 * self._cluster_size, True)
-            a, b, k = tf.split(1, 3, concat)
-            ao = tf.exp(a)
+            concat = rnn_cell.linear(inputs, 2, True)
+            b, k = tf.split(1, 2, concat)
             bo = tf.exp(b)
-            ko = state + tf.exp(k)  # batch_size x _cluster_size
+            ko = state + tf.exp(k) 
 
             phi = []
             for i in range(self._con_size):
                 # each phi is [batch_size x 1]
-                phi.append(tf.reduce_sum(ao * tf.exp(- bo * tf.square(ko - i)), 1, keep_dims=True))
+                phi.append(tf.exp(- bo * tf.square(ko - i)))
 
 
             # tf.concat(1, phi) -> [batch_size x seq_length]
