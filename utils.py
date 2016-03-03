@@ -86,7 +86,24 @@ class TextLoader():
         self.x_batches = np.split(xdata.reshape(self.batch_size, -1), self.num_batches, 1)
         self.y_batches = np.split(ydata.reshape(self.batch_size, -1), self.num_batches, 1)
         self.con_batches = np.split(self.con.reshape(self.batch_size, -1), self.num_batches, 1) 
+        #np.savetxt("batch.txt", self.con_batches[0], "%02d")
+        for batch in self.con_batches:
+            for row in batch:
+                #newv = row[row > 0]
+                #row[:len(newv)] = newv
+                #row[len(newv):] *= 0
 
+                space = 0
+                for j in range(len(row)):
+                    if (row[j] > 0 and row[j-1] == 0) or (j == 0 and row[0] > 0):
+                        row[space] = row[j]
+                        space += 1
+
+                for j in range(space, len(row)):
+                    row[j] = 0
+
+        #np.savetxt("batch_out.txt", self.con_batches[0], "%02d")
+        #exit(0)
 
     def next_batch(self):
         x, y, con = self.x_batches[self.pointer], self.y_batches[self.pointer], self.con_batches[self.pointer]

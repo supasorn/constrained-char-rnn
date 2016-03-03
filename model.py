@@ -32,17 +32,17 @@ class WindowCell():
     def __call__(self, inputs, state, con, timestep):
         with tf.variable_scope(type(self).__name__):
 
-            concat = rnn_cell.linear(inputs, 1, True)
-            #b, k = tf.split(1, 2, concat)
-            #bo = tf.exp(b)
-            #ko = state + tf.exp(k) 
-            ko = state + tf.exp(concat)
+            concat = rnn_cell.linear(inputs, 2, True)
+            b, k = tf.split(1, 2, concat)
+            bo = tf.exp(b)
+            ko = state + tf.exp(k) 
+            #ko = state + tf.exp(concat)
 
             phi = []
             for i in range(self._con_size):
                 # each phi is [batch_size x 1]
                 #phi.append(tf.exp(- bo * tf.square(ko - i)))
-                phi.append(tf.exp(- tf.square(i - ko)))
+                phi.append(tf.exp(- bo * tf.square(i - ko)))
 
 
             # tf.concat(1, phi) -> [batch_size x seq_length]
@@ -210,6 +210,9 @@ class ConstrainedModel():
                 [tf.ones([args.batch_size * args.seq_length])],
                 args.vocab_size)
         self.cost = tf.reduce_sum(loss) / args.batch_size / args.seq_length
+        self.loss_summary = tf.scalar_summary("loss", self.cost)
+        self.summary = tf.merge_all_summaries()
+
         print states
         self.final_state = states
 
@@ -222,10 +225,13 @@ class ConstrainedModel():
 
     def sample(self, sess, chars, vocab, num=200, prime=''):
         #con = self.network.zero_constrain(1).eval()
-        con_text = prime + 'what the hell obama american'
-        #con_text = prime + '' 
+        #con_text = prime + 'what the hell obama american'
+        #con_text = prime + 'what the hell obama american.wecomefrom'
         #con_text = con_text.upper() + ' ' * (50 - len(con_text))
+        #con_text = con_text.replace(" ", "")
+        con_text = "Syabcdefg" # -> Seven years ago, but could do everything from gas 
         con_text = con_text + ' ' * (50 - len(con_text))
+
         con = np.expand_dims(map(vocab.get, con_text), 0)
         print con
         print con_text
