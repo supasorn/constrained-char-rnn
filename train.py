@@ -110,8 +110,8 @@ def train2(args):
 
                 taskNum = (e * data_loader.num_batches + b)
                 etaCount += 1
+                writer.add_summary(summary, taskNum)
                 if (etaCount) % 25 == 0:
-                    writer.add_summary(summary, taskNum)
                     duration = time.time() - etaStart
                     etaStart = time.time()
 
