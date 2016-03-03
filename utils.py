@@ -42,7 +42,8 @@ class TextLoader():
 
         self.vocab_size = len(self.chars)
         self.vocab = dict(zip(self.chars, range(len(self.chars))))
-        con = data.upper()
+        #con = data.upper()
+        con = data
 
         with open(vocab_file, 'w') as f:
             cPickle.dump(self.chars, f)

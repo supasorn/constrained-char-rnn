@@ -29,17 +29,20 @@ class WindowCell():
 
     # inputs - tensor of size [batch_size x vocab_size]
     # con - tensor of size [batch_size x seq_length x vocab_size]
-    def __call__(self, inputs, state, con):
+    def __call__(self, inputs, state, con, timestep):
         with tf.variable_scope(type(self).__name__):
-            concat = rnn_cell.linear(inputs, 2, True)
-            b, k = tf.split(1, 2, concat)
-            bo = tf.exp(b)
-            ko = state + tf.exp(k) 
+
+            concat = rnn_cell.linear(inputs, 1, True)
+            #b, k = tf.split(1, 2, concat)
+            #bo = tf.exp(b)
+            #ko = state + tf.exp(k) 
+            ko = state + tf.exp(concat)
 
             phi = []
             for i in range(self._con_size):
                 # each phi is [batch_size x 1]
-                phi.append(tf.exp(- bo * tf.square(ko - i)))
+                #phi.append(tf.exp(- bo * tf.square(ko - i)))
+                phi.append(tf.exp(- tf.square(i - ko)))
 
 
             # tf.concat(1, phi) -> [batch_size x seq_length]
@@ -51,39 +54,37 @@ class WindowCell():
 
 
 class Network():
-    def __init__(self, cell_fn, input_size, cluster_size, vocab_size, hidden_unit, con_size, num_layers):
+    def __init__(self, cell_fn, input_size, vocab_size, hidden_unit, con_size, num_layers):
         self._num_layers = num_layers
         self._con_size = con_size
         self._vocab_size = vocab_size
-        self._cluster_size = cluster_size
-        self.w = WindowCell(input_size, cluster_size, vocab_size, con_size) 
+        self._hidden_unit = hidden_unit
+        self.w = WindowCell(input_size, vocab_size, con_size) 
+
 
         self.hn = []
         self.hn.append(cell_fn(hidden_unit , 1.0, input_size + self.w.output_size))
         for i in range(num_layers - 1):
             self.hn.append(cell_fn(hidden_unit , 1.0, input_size + self.hn[i].output_size + self.w.output_size))
 
-        self._state_size = self._vocab_size + self.w.state_size + sum(h.state_size for h in self.hn)
+        # +1 for time variable
+        self._state_size = self._vocab_size + self.w.state_size + sum(h.state_size for h in self.hn) + 1
 
-        #print self._state_size
-        #for i in range(len(self.hn)):
-            #print self.hn[i].state_size
-        #print self._vocab_size
-        #print self.w.state_size
-        #exit(0)
+    def zero_state(self, batch_size, dtype, con):
+        zeros = tf.zeros([batch_size, self._state_size - self._vocab_size - 1], dtype=dtype)
 
-    def zero_state(self, batch_size, dtype):
-        zeros = tf.zeros([batch_size, self.state_size], dtype=dtype)
-        return zeros
+        wpart, _ = self.w(
+                tf.zeros([batch_size, self._vocab_size], dtype=tf.float32), 
+                tf.zeros([batch_size, self.w.state_size], dtype=tf.float32), con, 
+                tf.zeros([batch_size, 1], dtype=tf.float32))
+
+        timepart = tf.ones([batch_size, 1])
+        return tf.concat(1, [wpart, zeros, timepart])
 
     def zero_constrain(self, batch_size):
         zeros = tf.zeros([batch_size, self._con_size], dtype=tf.float32)
         return zeros
     
-    @property
-    def state_size(self):
-        return self._state_size 
-
     # con: [batch_size x seq_length x vocab_size]
 
     def __call__(self, inputs, state, con, scope=None):
@@ -110,7 +111,9 @@ class Network():
 
             with tf.variable_scope("window"):
                 cur_state = tf.slice(state, [0, cur_state_pos], [-1, self.w.state_size])
-                wt, new_state = self.w(outh[0], cur_state, con)
+                timestep = tf.slice(state, [0, self._state_size-1], [-1, 1])
+
+                wt, new_state = self.w(outh[0], cur_state, con, timestep)
 
                 new_states[0] = wt
                 new_states.append(new_state)
@@ -124,8 +127,10 @@ class Network():
                     new_states.append(new_state)
                     cur_state_pos += self.hn[i].state_size
 
+            new_states.append(timestep + 1)
 
-        return tf.concat(1, outh), tf.concat(1, new_states) # TODO add skip connection?
+
+        return tf.concat(1, outh), tf.concat(1, new_states) 
 
 
 def decoder(inputs, initial_state, network, con, loop_function=None, scope=None):
@@ -166,13 +171,11 @@ class ConstrainedModel():
         con_size = 50 #args.seq_length
 
         #self.cell = cell = rnn_cell.MultiRNNCell([cell] * args.num_layers)
-        self.network = Network(cell_fn, args.vocab_size, 20, args.vocab_size, args.rnn_size, con_size, args.num_layers)
+        self.network = Network(cell_fn, args.vocab_size, args.vocab_size, args.rnn_size, con_size, args.num_layers)
 
         self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
         self.con_data = tf.placeholder(tf.int32, [args.batch_size, con_size])
-
-        self.initial_state = self.network.zero_state(args.batch_size, tf.float32)
 
         with tf.variable_scope('rnnlm'):
             softmax_w = tf.get_variable("softmax_w", [args.rnn_size * args.num_layers, args.vocab_size])
@@ -187,6 +190,7 @@ class ConstrainedModel():
             # [(batch_size * seq_length) x vocab_size]
             con = tf.nn.embedding_lookup(embedding, self.con_data)
 
+        self.initial_state = self.network.zero_state(args.batch_size, tf.float32, con)
 
         def loop(prev, _):
             prev = tf.nn.xw_plus_b(prev, softmax_w, softmax_b)
@@ -217,24 +221,33 @@ class ConstrainedModel():
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
     def sample(self, sess, chars, vocab, num=200, prime=''):
-        state = self.network.zero_state(1, tf.float32).eval()
         #con = self.network.zero_constrain(1).eval()
-        con_text = prime + 'the american auto industry'
-        con_text = con_text.upper() + ' ' * (50 - len(con_text))
+        con_text = prime + 'what the hell obama american'
+        #con_text = prime + '' 
+        #con_text = con_text.upper() + ' ' * (50 - len(con_text))
+        con_text = con_text + ' ' * (50 - len(con_text))
         con = np.expand_dims(map(vocab.get, con_text), 0)
         print con
         print con_text
+        init = 0
+        
+        state = self.initial_state.eval({self.con_data: con})
+        np.set_printoptions(threshold='nan')
+        #print state[0][:68]
 
         for char in prime[:-1]:
             x = np.zeros((1, 1))
             x[0, 0] = vocab[char]
+
             feed = {self.input_data: x, self.initial_state:state, self.con_data: con}
+
             [state] = sess.run([self.final_state], feed)
+            #print state[0][:68]
             #print "max = "
             #print np.argmax(state[0][:self.network._vocab_size])
             #print state[0][668:668+20]
             pos = self.network._vocab_size + self.network.hn[0].state_size
-            print state[0][pos:pos+self.network._cluster_size]
+            print state[0][pos:pos+1]
 
 
         def weighted_pick(weights):
@@ -249,8 +262,12 @@ class ConstrainedModel():
             x[0, 0] = vocab[char]
             feed = {self.input_data: x, self.initial_state:state, self.con_data: con}
             [probs, state] = sess.run([self.probs, self.final_state], feed)
+            #print state[0][:68]
             p = probs[0]
             # sample = int(np.random.choice(len(p), p=p))
+            pos = self.network._vocab_size + self.network.hn[0].state_size
+            print state[0][pos:pos+1]
+
             sample = weighted_pick(p)
             pred = chars[sample]
             ret += pred
