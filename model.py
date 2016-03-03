@@ -58,6 +58,7 @@ class Network():
         self._num_layers = num_layers
         self._con_size = con_size
         self._vocab_size = vocab_size
+        self._cluster_size = cluster_size
         self.w = WindowCell(input_size, cluster_size, vocab_size, con_size) 
 
         self.hn = []
@@ -75,9 +76,7 @@ class Network():
         #exit(0)
 
     def zero_state(self, batch_size, dtype):
-        zeros = tf.zeros(
-            tf.pack([batch_size, self.state_size]), dtype=dtype)
-        zeros.set_shape([None, self.state_size])
+        zeros = tf.zeros([batch_size, self.state_size], dtype=dtype)
         return zeros
 
     def zero_constrain(self, batch_size):
@@ -95,8 +94,8 @@ class Network():
         new_states = []
 
         # state
-        # h1, w, h2, h3
-        # 2 x hidden_unit, cluster_size, 2 x hidden_unit, 2 x hidden_unit
+        # wt, h1, w, h2, h3
+        # vocab_size, 2 x hidden_unit, cluster_size, 2 x hidden_unit, 2 x hidden_unit
         with tf.variable_scope(scope or type(self).__name__):  
 
             outh = [None] * len(self.hn)
@@ -130,6 +129,7 @@ class Network():
 
 
         return tf.concat(1, outh), tf.concat(1, new_states) # TODO add skip connection?
+
 
 def decoder(inputs, initial_state, network, con, loop_function=None, scope=None):
     with tf.variable_scope(scope or "rnn_decoder"):
@@ -235,7 +235,10 @@ class ConstrainedModel():
             [state] = sess.run([self.final_state], feed)
             #print "max = "
             #print np.argmax(state[0][:self.network._vocab_size])
-            print state[0][668:668+20]
+            #print state[0][668:668+20]
+            pos = self.network._vocab_size + self.network.hn[0].state_size
+            print state[0][pos:pos+self.network._cluster_size]
+
 
         def weighted_pick(weights):
             t = np.cumsum(weights)
