@@ -89,18 +89,31 @@ class TextLoader():
         #np.savetxt("batch.txt", self.con_batches[0], "%02d")
         for batch in self.con_batches:
             for row in batch:
+                # Removing Space
                 #newv = row[row > 0]
                 #row[:len(newv)] = newv
                 #row[len(newv):] *= 0
 
-                space = 0
-                for j in range(len(row)):
-                    if (row[j] > 0 and row[j-1] == 0) or (j == 0 and row[0] > 0):
-                        row[space] = row[j]
-                        space += 1
+                # Keeping only the first letter
+                #space = 0
+                #for j in range(len(row)):
+                    #if (row[j] > 0 and row[j-1] == 0) or (j == 0 and row[0] > 0):
+                        #row[space] = row[j]
+                        #space += 1
+                #for j in range(space, len(row)):
+                    #row[j] = 0
 
-                for j in range(space, len(row)):
-                    row[j] = 0
+                # Count feature
+
+                row1 = ("".join(self.chars[x] for x in row).replace("\t", " ").replace("\n", " "))
+                count = [chr(min(ord("A") + len(y) - 1, ord("Z"))) for y in row1.split(" ") if len(y) > 0]
+                #print row
+                #print row1
+                #print count
+                #print "".join(self.chars[x] for x in row)
+                countMap = map(self.vocab.get, count)
+                row[:len(countMap)] = countMap
+                row[len(countMap):] *= 0
 
         #np.savetxt("batch_out.txt", self.con_batches[0], "%02d")
         #exit(0)

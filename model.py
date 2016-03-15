@@ -229,7 +229,8 @@ class ConstrainedModel():
         #con_text = prime + 'what the hell obama american.wecomefrom'
         #con_text = con_text.upper() + ' ' * (50 - len(con_text))
         #con_text = con_text.replace(" ", "")
-        con_text = "Syabcdefg" # -> Seven years ago, but could do everything from gas 
+        #con_text = "Syabcdefg" # -> Seven years ago, but could do everything from gas 
+        con_text = "EEDACEBGFI"
         con_text = con_text + ' ' * (50 - len(con_text))
 
         con = np.expand_dims(map(vocab.get, con_text), 0)
